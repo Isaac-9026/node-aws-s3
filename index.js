@@ -4,9 +4,11 @@ const dotenv = require("dotenv")
 const path = require("path")
 
 // Solicitar los servicios de AWS S3 (Subir achivos)
+//otorgar nuevo permiso de "lectura"
 const {
   S3Client,
-  PutObjectCommand
+  PutObjectCommand,
+  ListObjectsV2Command
 } = require("@aws-sdk/client-s3")
 
 
@@ -27,6 +29,7 @@ const upload = multer({
 })
 
 //Cliente S3
+//forcePathStyle: true (modo compatibilidad)
 const s3Client = new S3Client({
   region: process.env.AWS_REGION,
   endpoint: process.env.AWS_ENDPOINT_URL,
@@ -43,6 +46,11 @@ app.use(express.static(path.join(__dirname, "public")))
 //Ruta => ir a ruta raiz.
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"))
+})
+
+// Ruta para listar => http://localhost:3000/lista
+app.get("/lista", (req,res) => {
+  res.sendFile(path.join(__dirname, "public", "lista.html"))
 })
 
 //Ruta para subir archivos
@@ -92,6 +100,50 @@ app.post('/upload', upload.single("archivo"), async(req, res) => {
       sucess: false,
       messagge: 'No se pudo subir el archivo',
       error:error.messagge
+    })
+  }
+})
+
+//Nueva operación (LECTURA desde AWS S3)
+app.get("/api/archivos", async(req, res) => {
+  try {
+    //Comando para leer los archivos
+    const command = new ListObjectsV2Command({
+      Bucket: BUCKET,
+      Prefix: PREFIX
+    })
+
+    //Consulta S3
+    const data = await s3Client.send(command)
+
+    //Si existen los archivos
+    //1() => retorna un arreglo incluso si no existen archivos
+    //2() => filtra la colección
+    //3() => retorna los datos ya filtrados
+    const archivos = (data.Contents || [])
+    .filter(objeto => objeto.Key !== PREFIX)
+    .map(objeto => ({
+      nombre: objeto.Key.replace(PREFIX, ""),
+      key: objeto.Key,
+      tamano: objeto.Size,
+      fecha: objeto.LastModified
+    }))
+
+    //Retornamos los datos
+    res.json({
+      sucess: true,
+      bucket: BUCKET,
+      prefijo: PREFIX,
+      total: archivos.length,
+      archivos: archivos
+    })
+
+  } catch (e) {
+    console.error(`Error al lista archivos: `, e)
+    res.status(500).json({
+      success:false,
+      messagge:'No se puede acceder a los archivos',
+      error: e.messagge
     })
   }
 })
