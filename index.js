@@ -8,8 +8,12 @@ const path = require("path")
 const {
   S3Client,
   PutObjectCommand,
-  ListObjectsV2Command
+  ListObjectsV2Command,
+  GetObjectCommand,
+  DeleteObjectCommand
 } = require("@aws-sdk/client-s3")
+
+const { getSignedUrl } = require("@aws-sdk/s3-request-presigner")
 
 //DynamoDB - Servicio BD NoSQL
 const {
@@ -184,6 +188,58 @@ app.get("/api/archivos", async(req, res) => {
     })
   }
 })
+
+// obtener url de descarga 
+app.get("/api/archivos/descargar", async (req, res) => {
+  const { key } = req.query;
+  
+  if (!key) {
+    return res.status(400).json({ success: false, message: "Falta la key del archivo" });
+  }
+
+  try {
+    const command = new GetObjectCommand({
+      Bucket: BUCKET,
+      Key: key
+    });
+
+    // Generar la URL prefirmada (en este caso expirará en 1 hora = 3600 segundos)
+    const url = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
+    
+    res.json({ success: true, url });
+  } catch (error) {
+    console.error("Error al generar URL:", error);
+    res.status(500).json({ success: false, message: "Error al generar el link de descarga", error: error.message });
+  }
+});
+
+//Eliminar archivo de S3
+app.delete("/api/archivos", async (req, res) => {
+  const { key } = req.query;
+
+  if (!key) {
+    return res.status(400).json({ success: false, message: "Falta la key del archivo" });
+  }
+
+  //Validacion de seguridad: asegurarse de que pertenece al PREFIX
+  if (PREFIX && !key.startsWith(PREFIX)) {
+    return res.status(403).json({ success: false, message: "Acceso denegado" });
+  }
+
+  try {
+    const command = new DeleteObjectCommand({
+      Bucket: BUCKET,
+      Key: key
+    });
+
+    await s3Client.send(command);
+
+    res.json({ success: true, message: "Archivo eliminado correctamente" });
+  } catch (error) {
+    console.error("Error al eliminar el archivo:", error);
+    res.status(500).json({ success: false, message: "Error al eliminar", error: error.message });
+  }
+});
 
 //Iniciar el servidor
 app.listen(PORT, ()=>{

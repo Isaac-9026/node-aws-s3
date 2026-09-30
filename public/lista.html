@@ -1,11 +1,120 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
+
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Document</title>
+  <title>Lista de Archivos</title>
 </head>
+
 <body>
-  
+  <h1>Lista de Archivos</h1>
+  <a href="/">Ir a subir archivo</a>
+  <br><br>
+
+  <table border="1">
+    <thead>
+      <tr>
+        <th>Nombre</th>
+        <th>Key (S3)</th>
+        <th>Tamaño (bytes)</th>
+        <th>Fecha de modificación</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
+    <tbody id="cuerpo-tabla">
+      
+    </tbody>
+  </table>
+
+  <script>
+    async function cargarArchivos() {
+      const cuerpoTabla = document.getElementById('cuerpo-tabla');
+
+      try {
+        const respuesta = await fetch('/api/archivos');
+
+        if (!respuesta.ok) {
+          throw new Error(`Error HTTP: ${respuesta.status}`);
+        }
+
+        const data = await respuesta.json();
+
+        //Limpiar el contenido de tabla
+        cuerpoTabla.innerHTML = '';
+
+        if (!data.archivos || data.archivos.length === 0) {
+          cuerpoTabla.innerHTML = '<tr><td colspan="5" style="text-align: center;">No hay archivos disponibles</td></tr>';
+          return;
+        }
+
+        //Recorrer cada archivo e insertar una fila
+        data.archivos.forEach(archivo => {
+          const fila = document.createElement('tr');
+
+          fila.innerHTML = `
+            <td>${archivo.nombre}</td>
+            <td>${archivo.key}</td>
+            <td>${archivo.tamano}</td>
+            <td>${archivo.fecha}</td>
+            <td>
+              <button onclick="descargarArchivo('${archivo.key}')">Descargar</button>
+              <button onclick="eliminarArchivo('${archivo.key}')">Eliminar</button>
+            </td>
+          `;
+
+          cuerpoTabla.appendChild(fila);
+        });
+      } catch (error) {
+        console.error("Error al obtener los archivos:", error);
+        cuerpoTabla.innerHTML = '<tr><td colspan="5" style="color: red; text-align: center;">Error al cargar los archivos</td></tr>';
+      }
+    }
+
+    async function descargarArchivo(key) {
+      try {
+        const respuesta = await fetch(`/api/archivos/descargar?key=${encodeURIComponent(key)}`);
+        const data = await respuesta.json();
+        
+        if (data.success && data.url) {
+          //Abrir la URL firmada para iniciar la descarga
+          window.open(data.url, '_blank');
+        } else {
+          alert('Error: ' + data.message);
+        }
+      } catch (error) {
+        console.error("Error al descargar:", error);
+        alert("Ocurrió un error al intentar descargar el archivo.");
+      }
+    }
+
+    async function eliminarArchivo(key) {
+      if (!confirm(`¿Estás seguro de que deseas eliminar el archivo:\n${key}?`)) {
+        return;
+      }
+
+      try {
+        const respuesta = await fetch(`/api/archivos?key=${encodeURIComponent(key)}`, {
+          method: 'DELETE'
+        });
+        const data = await respuesta.json();
+
+        if (data.success) {
+          alert("Archivo eliminado correctamente.");
+          //Recargar la tabla
+          cargarArchivos();
+        } else {
+          alert('Error: ' + data.message);
+        }
+      } catch (error) {
+        console.error("Error al eliminar:", error);
+        alert("Ocurrió un error al intentar eliminar el archivo.");
+      }
+    }
+
+    //Ejecutar la funcion
+    cargarArchivos();
+  </script>
+
 </body>
+
 </html>
