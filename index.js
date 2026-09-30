@@ -11,6 +11,12 @@ const {
   ListObjectsV2Command
 } = require("@aws-sdk/client-s3")
 
+//DynamoDB - Servicio BD NoSQL
+const {
+  DynamoDBClient,
+  PutItemCommand,
+} = require("@aws-sdk/client-dynamodb")
+
 
 //Cargar las variables de entorno
 dotenv.config()
@@ -40,6 +46,16 @@ const s3Client = new S3Client({
   forcePathStyle: true
 })
 
+//Cliente Dynamo
+const dynamoClient = new DynamoDBClient({
+  region: process.env.AWS_REGION,
+  endpoint: process.env.AWS_ENDPOINT_URL,
+  credentials: {
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
+  }
+})
+
 //Archivo estático aplicación => frontend
 app.use(express.static(path.join(__dirname, "public")))
 
@@ -53,6 +69,9 @@ app.get("/lista", (req,res) => {
   res.sendFile(path.join(__dirname, "public", "lista.html"))
 })
 
+
+//Cuando el cliente suba un archivo, se utilizaran 2 servicios
+//S3    : Alojar el archivo binario (PDF, JPG, etc.)
 //Ruta para subir archivos
 app.post('/upload', upload.single("archivo"), async(req, res) => {
   try {
@@ -85,6 +104,24 @@ app.post('/upload', upload.single("archivo"), async(req, res) => {
     await s3Client.send(command)
 
     console.log(`Archivo subido: ${key}`)
+
+    //También... utilizaremos el DynamoDB (Metadatos)
+    const id = `${Date.now()}-${Math.random().toString(36).substring(2,8)}`
+    const dynamoCommand = new PutItemCommand({
+      TableName: process.env.AWS_DYNAMODB_TABLE,
+      Item: {
+        id: {S:id},
+        nombre: {S:fileName},
+        tipo: {S:req.file.mimetype},
+        tamano: {N:req.file.size.toString()},
+        fecha: {S: new Date().toISOString()},
+        s3Key: {S:key}
+      }
+    })
+
+    //Ejecutar el dynamoCommand
+    await dynamoClient.send(dynamoCommand)
+    console.log("Registro creado en DynamoDB")
 
     //Retornar un JSON informando del proceso
     res.json({
